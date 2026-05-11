@@ -54,8 +54,8 @@ $adminMenu = [
 
 <div id="adminSidebarOverlay" class="fixed inset-0 z-40 hidden bg-black/30 lg:hidden"></div>
 
-<aside id="adminSidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full border-r border-[#E5E7EB] bg-white px-4 py-6 shadow-lg transition-transform duration-300 lg:translate-x-0">
-    <div class="mb-8 flex items-center gap-3 rounded-2xl bg-[#F5D0D7] px-4 py-3">
+<aside id="adminSidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full border-r border-[#E5E7EB] bg-white px-4 py-6 shadow-lg transition-transform duration-300 lg:translate-x-0 flex flex-col overflow-hidden">
+    <div class="mb-8 flex items-center gap-3 rounded-2xl bg-[#F5D0D7] px-4 py-3 flex-shrink-0">
         <div class="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-[#B76E79] shadow-sm">
             <i class="fa-solid fa-spa text-lg"></i>
         </div>
@@ -65,7 +65,7 @@ $adminMenu = [
         </div>
     </div>
 
-    <nav class="space-y-1" aria-label="Admin Sidebar Navigation">
+    <nav class="space-y-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#B76E79] scrollbar-track-[#F5D0D7] pr-2" aria-label="Admin Sidebar Navigation">
         <?php foreach ($adminMenu as $item): ?>
             <?php $active = $currentPage === $item['file']; ?>
             <a
