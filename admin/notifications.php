@@ -2,12 +2,16 @@
 include "../config/session.php";
 include "../config/conn.php";
 
-if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'customer') {
+if (!isset($_SESSION['role']) || $_SESSION['role'] !== 'admin') {
     header("Location: ../index.php");
     exit;
 }
 
-$customerId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
+function e($value) {
+    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+}
+
+$adminId = isset($_SESSION['user_id']) ? (int) $_SESSION['user_id'] : 0;
 
 mysqli_query(
     $conn,
@@ -22,10 +26,6 @@ mysqli_query(
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
 );
 
-function e($value) {
-    return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
-}
-
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -37,20 +37,20 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
         if ($action === 'mark_read') {
             $appointmentId = (int) ($_POST['appointment_id'] ?? 0);
-            $stmt = mysqli_prepare($conn, "INSERT IGNORE INTO notification_reads (user_id, appointment_id) SELECT ?, appointment_id FROM appointments WHERE appointment_id = ? AND customer_id = ?");
-            if ($stmt) {
-                mysqli_stmt_bind_param($stmt, "iii", $customerId, $appointmentId, $customerId);
-                mysqli_stmt_execute($stmt);
-                mysqli_stmt_close($stmt);
+            $readStmt = mysqli_prepare($conn, "INSERT IGNORE INTO notification_reads (user_id, appointment_id) SELECT ?, appointment_id FROM appointments WHERE appointment_id = ?");
+            if ($readStmt) {
+                mysqli_stmt_bind_param($readStmt, "ii", $adminId, $appointmentId);
+                mysqli_stmt_execute($readStmt);
+                mysqli_stmt_close($readStmt);
             }
         }
 
         if ($action === 'mark_all_read') {
-            $stmt = mysqli_prepare($conn, "INSERT IGNORE INTO notification_reads (user_id, appointment_id) SELECT ?, appointment_id FROM appointments WHERE customer_id = ?");
-            if ($stmt) {
-                mysqli_stmt_bind_param($stmt, "ii", $customerId, $customerId);
-                mysqli_stmt_execute($stmt);
-                mysqli_stmt_close($stmt);
+            $readStmt = mysqli_prepare($conn, "INSERT IGNORE INTO notification_reads (user_id, appointment_id) SELECT ?, appointment_id FROM appointments");
+            if ($readStmt) {
+                mysqli_stmt_bind_param($readStmt, "i", $adminId);
+                mysqli_stmt_execute($readStmt);
+                mysqli_stmt_close($readStmt);
             }
         }
     }
@@ -61,11 +61,12 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
 $notifications = mysqli_query(
     $conn,
-    "SELECT a.appointment_id, a.appointment_date, a.start_time, a.status, s.service_name, nr.read_id
+    "SELECT a.appointment_id, a.appointment_date, a.start_time, a.status, customer.full_name AS customer_name, staff.full_name AS staff_name, s.service_name, nr.read_id
      FROM appointments a
+     INNER JOIN users customer ON a.customer_id = customer.user_id
+     INNER JOIN users staff ON a.staff_id = staff.user_id
      INNER JOIN services s ON a.service_id = s.service_id
-     LEFT JOIN notification_reads nr ON a.appointment_id = nr.appointment_id AND nr.user_id = {$customerId}
-     " . ($customerId > 0 ? "WHERE a.customer_id = {$customerId}" : "WHERE 1=0") . "
+     LEFT JOIN notification_reads nr ON a.appointment_id = nr.appointment_id AND nr.user_id = {$adminId}
      ORDER BY a.appointment_date DESC, a.start_time DESC
      LIMIT 10"
 );
@@ -82,13 +83,13 @@ $notifications = mysqli_query(
     <style>body{font-family:'Inter',sans-serif;}</style>
 </head>
 <body class="bg-[#F9FAFB] text-[#2D2D2D]">
-    <?php include "../includes/customersidebar.php"; ?>
+    <?php include "../includes/adminsidebar.php"; ?>
     <main class="min-h-screen lg:ml-72 px-4 pb-8 pt-20 sm:px-6 lg:px-8 lg:pt-8">
         <section class="rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-md">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h1 class="text-2xl font-semibold">Notifications</h1>
-                    <p class="mt-1 text-sm text-gray-500">Appointment updates and service reminders.</p>
+                    <p class="mt-1 text-sm text-gray-500">Latest appointment updates across the salon.</p>
                 </div>
                 <form method="POST">
                     <input type="hidden" name="csrf_token" value="<?php echo e($_SESSION['csrf_token']); ?>">
@@ -105,13 +106,16 @@ $notifications = mysqli_query(
                     <article class="rounded-2xl border <?php echo $isUnread ? 'border-[#F5D0D7]' : 'border-[#E5E7EB]'; ?> bg-white p-5 shadow-md">
                         <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                             <div class="flex items-start gap-3">
-                            <div class="mt-1 h-8 w-8 rounded-xl bg-[#F5D0D7] text-[#B76E79] flex items-center justify-center">
-                                <i class="fa-solid fa-bell"></i>
-                            </div>
-                            <div>
-                                <p class="font-medium"><?php echo e($row['service_name']); ?> appointment is <span class="capitalize text-[#B76E79]"><?php echo e(str_replace("_", " ", $row['status'])); ?></span>.</p>
-                                <p class="mt-1 text-sm text-gray-500"><?php echo e($row['appointment_date'] . " at " . date("g:i A", strtotime($row['start_time']))); ?></p>
-                            </div>
+                                <div class="mt-1 flex h-8 w-8 items-center justify-center rounded-xl bg-[#F5D0D7] text-[#B76E79]">
+                                    <i class="fa-solid fa-bell"></i>
+                                </div>
+                                <div>
+                                    <p class="font-medium">
+                                        <?php echo e($row['service_name']); ?> for <?php echo e($row['customer_name']); ?> with <?php echo e($row['staff_name']); ?> is
+                                        <span class="capitalize text-[#B76E79]"><?php echo e(str_replace("_", " ", $row['status'])); ?></span>.
+                                    </p>
+                                    <p class="mt-1 text-sm text-gray-500"><?php echo e($row['appointment_date'] . " at " . date("g:i A", strtotime($row['start_time']))); ?></p>
+                                </div>
                             </div>
                             <?php if ($isUnread): ?>
                                 <form method="POST">
@@ -133,4 +137,3 @@ $notifications = mysqli_query(
     </main>
 </body>
 </html>
-
