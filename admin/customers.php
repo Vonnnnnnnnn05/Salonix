@@ -1,6 +1,7 @@
 <?php
 include "../config/session.php";
 include "../config/conn.php";
+include "../includes/delete_helpers.php";
 
 if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
     header("Location: ../index.php");
@@ -22,6 +23,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = "Invalid request token.";
     } else {
         $action = $_POST['action'] ?? '';
+        if ($action === 'create') {
+            $fullName = trim($_POST['full_name'] ?? '');
+            $username = trim($_POST['username'] ?? '');
+            $email = trim($_POST['email'] ?? '');
+            $contact = trim($_POST['contact_number'] ?? '');
+            $password = $_POST['password'] ?? '';
+
+            if ($fullName === '' || $username === '' || strlen($password) < 8) {
+                $error = "Name, username, and password (8+ chars) are required.";
+            } else {
+                $check = mysqli_prepare($conn, "SELECT user_id FROM users WHERE username = ? LIMIT 1");
+                if ($check) {
+                    mysqli_stmt_bind_param($check, "s", $username);
+                    mysqli_stmt_execute($check);
+                    $exists = mysqli_stmt_get_result($check);
+                    $already = $exists && mysqli_num_rows($exists) > 0;
+                    mysqli_stmt_close($check);
+
+                    if ($already) {
+                        $error = "Username already exists.";
+                    } else {
+                        $hash = password_hash($password, PASSWORD_DEFAULT);
+                        $stmt = mysqli_prepare($conn, "INSERT INTO users (full_name, username, password, role, contact_number, email) VALUES (?, ?, ?, 'customer', ?, ?)");
+                        if ($stmt) {
+                            mysqli_stmt_bind_param($stmt, "sssss", $fullName, $username, $hash, $contact, $email);
+                            if (mysqli_stmt_execute($stmt)) {
+                                $message = "Customer created successfully.";
+                            } else {
+                                $error = "Failed to create customer.";
+                            }
+                            mysqli_stmt_close($stmt);
+                        } else {
+                            $error = "Failed to prepare customer creation.";
+                        }
+                    }
+                } else {
+                    $error = "Failed to validate username.";
+                }
+            }
+        }
+
         if ($action === 'update') {
             $userId = (int) ($_POST['user_id'] ?? 0);
             $fullName = trim($_POST['full_name'] ?? '');
@@ -50,17 +92,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($userId <= 0) {
                 $error = "Invalid customer selected.";
             } else {
-                $stmt = mysqli_prepare($conn, "DELETE FROM users WHERE user_id = ? AND role = 'customer'");
-                if ($stmt) {
-                    mysqli_stmt_bind_param($stmt, "i", $userId);
-                    if (mysqli_stmt_execute($stmt)) {
-                        $message = "Customer deleted successfully.";
-                    } else {
-                        $error = "Cannot delete customer. Existing appointments may be linked.";
-                    }
-                    mysqli_stmt_close($stmt);
-                } else {
-                    $error = "Failed to prepare customer deletion.";
+                try {
+                    mysqli_begin_transaction($conn);
+                    salonix_delete_user_with_appointments($conn, $userId, 'customer');
+                    mysqli_commit($conn);
+                    $message = "Customer and linked appointments deleted successfully.";
+                } catch (mysqli_sql_exception $exception) {
+                    mysqli_rollback($conn);
+                    $error = "Failed to delete customer. Please try again.";
                 }
             }
         }
@@ -104,6 +143,39 @@ $customers = mysqli_query($conn, "SELECT user_id, full_name, username, email, co
         <?php endif; ?>
         <?php if ($error !== ''): ?>
             <div class="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"><?php echo htmlspecialchars($error); ?></div>
+        <?php endif; ?>
+
+        <?php if (!$editCustomer): ?>
+            <section class="mt-6 rounded-2xl border border-[#E5E7EB] bg-white p-6 shadow-md">
+                <h2 class="text-lg font-semibold">Add Customer</h2>
+                <form method="POST" class="mt-4 grid gap-4 md:grid-cols-2">
+                    <input type="hidden" name="csrf_token" value="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
+                    <input type="hidden" name="action" value="create">
+                    <div>
+                        <label class="mb-2 block text-sm font-medium">Full Name</label>
+                        <input name="full_name" type="text" required class="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#B76E79] focus:outline-none focus:ring-2 focus:ring-[#F5D0D7]">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-sm font-medium">Username</label>
+                        <input name="username" type="text" required class="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#B76E79] focus:outline-none focus:ring-2 focus:ring-[#F5D0D7]">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-sm font-medium">Email</label>
+                        <input name="email" type="email" class="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#B76E79] focus:outline-none focus:ring-2 focus:ring-[#F5D0D7]">
+                    </div>
+                    <div>
+                        <label class="mb-2 block text-sm font-medium">Contact Number</label>
+                        <input name="contact_number" type="text" class="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#B76E79] focus:outline-none focus:ring-2 focus:ring-[#F5D0D7]">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="mb-2 block text-sm font-medium">Password</label>
+                        <input name="password" type="password" required class="w-full rounded-xl border border-[#E5E7EB] px-4 py-3 text-sm focus:border-[#B76E79] focus:outline-none focus:ring-2 focus:ring-[#F5D0D7]" placeholder="At least 8 characters">
+                    </div>
+                    <div class="md:col-span-2">
+                        <button type="submit" class="rounded-xl bg-[#B76E79] px-4 py-2 text-sm font-semibold text-white shadow-md transition hover:bg-[#a9606b]">Add Customer</button>
+                    </div>
+                </form>
+            </section>
         <?php endif; ?>
 
         <?php if ($editCustomer): ?>

@@ -1,6 +1,7 @@
 <?php
 include "../config/session.php";
 include "../config/conn.php";
+include "../includes/delete_helpers.php";
 
 if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
     header("Location: ../index.php");
@@ -93,17 +94,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($appointmentId <= 0) {
                 $error = "Invalid appointment selected.";
             } else {
-                $stmt = mysqli_prepare($conn, "DELETE FROM appointments WHERE appointment_id = ?");
-                if ($stmt) {
-                    mysqli_stmt_bind_param($stmt, "i", $appointmentId);
-                    if (mysqli_stmt_execute($stmt)) {
-                        $message = "Appointment deleted successfully.";
-                    } else {
-                        $error = "Failed to delete appointment. It may be linked to monitoring tables.";
-                    }
-                    mysqli_stmt_close($stmt);
-                } else {
-                    $error = "Failed to prepare appointment deletion.";
+                try {
+                    mysqli_begin_transaction($conn);
+                    salonix_delete_appointment($conn, $appointmentId);
+                    mysqli_commit($conn);
+                    $message = "Appointment deleted successfully.";
+                } catch (mysqli_sql_exception $exception) {
+                    mysqli_rollback($conn);
+                    $error = "Failed to delete appointment. Please try again.";
                 }
             }
         }

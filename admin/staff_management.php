@@ -1,6 +1,7 @@
 <?php
 include "../config/session.php";
 include "../config/conn.php";
+include "../includes/delete_helpers.php";
 
 if (isset($_SESSION['role']) && $_SESSION['role'] !== 'admin') {
     header("Location: ../index.php");
@@ -114,17 +115,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($userId <= 0) {
                 $error = "Invalid staff selected.";
             } else {
-                $stmt = mysqli_prepare($conn, "DELETE FROM users WHERE user_id = ? AND role = 'staff'");
-                if ($stmt) {
-                    mysqli_stmt_bind_param($stmt, "i", $userId);
-                    if (mysqli_stmt_execute($stmt)) {
-                        $message = "Staff member deleted successfully.";
-                    } else {
-                        $error = "Cannot delete staff. Existing appointments may be linked.";
-                    }
-                    mysqli_stmt_close($stmt);
-                } else {
-                    $error = "Failed to prepare staff deletion.";
+                try {
+                    mysqli_begin_transaction($conn);
+                    salonix_delete_user_with_appointments($conn, $userId, 'staff');
+                    mysqli_commit($conn);
+                    $message = "Staff member and linked appointments deleted successfully.";
+                } catch (mysqli_sql_exception $exception) {
+                    mysqli_rollback($conn);
+                    $error = "Failed to delete staff member. Please try again.";
                 }
             }
         }

@@ -23,8 +23,8 @@ mysqli_query(
         PRIMARY KEY (feedback_id),
         UNIQUE KEY unique_appointment_feedback (appointment_id),
         KEY customer_id (customer_id),
-        CONSTRAINT appointment_feedback_ibfk_1 FOREIGN KEY (appointment_id) REFERENCES appointments (appointment_id),
-        CONSTRAINT appointment_feedback_ibfk_2 FOREIGN KEY (customer_id) REFERENCES users (user_id)
+        CONSTRAINT appointment_feedback_ibfk_1 FOREIGN KEY (appointment_id) REFERENCES appointments (appointment_id) ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT appointment_feedback_ibfk_2 FOREIGN KEY (customer_id) REFERENCES users (user_id) ON DELETE CASCADE ON UPDATE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
 );
 
